@@ -326,10 +326,80 @@
   }
   .cache-banner:hover { background: #ffeeba; }
 
+  /* --- Favorites --- */
+  .fav-btn {
+    background: none;
+    border: none;
+    font-size: 1.6rem;
+    cursor: pointer;
+    min-height: 44px;
+    min-width: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.15s;
+  }
+  .fav-btn:active { transform: scale(1.3); }
+  .fav-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .favorites-list {
+    list-style: none;
+    margin-top: 12px;
+  }
+  .favorites-list li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 8px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    min-height: 56px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .favorites-list li:active { background: var(--accent-light); }
+  .fav-thumb {
+    width: 50px;
+    height: 50px;
+    border-radius: 8px;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+  .fav-info { flex: 1; min-width: 0; }
+  .fav-title {
+    font-weight: 600;
+    font-size: 1rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .fav-source {
+    font-size: 0.8rem;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .fav-remove {
+    background: none;
+    border: none;
+    color: var(--done);
+    font-size: 1.2rem;
+    cursor: pointer;
+    min-height: 44px;
+    min-width: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
   /* --- Empty state --- */
   .empty-state {
     text-align: center;
-    padding: 6rem 2rem;
+    padding: 4rem 2rem;
     color: var(--muted);
   }
   .empty-state p { font-size: 1.2rem; margin-bottom: 8px; }
@@ -348,10 +418,7 @@
 </div>
 
 <div class="container" id="content">
-  <div class="empty-state">
-    <p>Paste a recipe link to get started</p>
-    <small>Works with most recipe sites</small>
-  </div>
+  <div id="homeScreen"></div>
 </div>
 
 <script>
@@ -364,6 +431,81 @@ let currentServings = null;
 let fromCache = false;
 
 const CACHE_KEY = 'recipe_cache';
+const FAVS_KEY = 'recipe_favorites';
+let currentUrl = '';
+
+// ---------------------------------------------------------------------------
+// Favorites
+// ---------------------------------------------------------------------------
+function getFavorites() {
+  try { return JSON.parse(localStorage.getItem(FAVS_KEY) || '[]'); }
+  catch { return []; }
+}
+
+function saveFavorites(favs) {
+  localStorage.setItem(FAVS_KEY, JSON.stringify(favs));
+}
+
+function isFavorite(url) {
+  return getFavorites().some(f => f.url === url);
+}
+
+function toggleFavorite() {
+  if (!currentRecipe || !currentUrl) return;
+  let favs = getFavorites();
+  const idx = favs.findIndex(f => f.url === currentUrl);
+  if (idx >= 0) {
+    favs.splice(idx, 1);
+  } else {
+    favs.unshift({
+      url: currentUrl,
+      title: currentRecipe.title || 'Untitled',
+      image: currentRecipe.image || '',
+    });
+  }
+  saveFavorites(favs);
+  updateFavButton();
+}
+
+function updateFavButton() {
+  const btn = document.getElementById('favBtn');
+  if (!btn) return;
+  btn.textContent = isFavorite(currentUrl) ? '\u2764\uFE0F' : '\uD83E\uDD0D';
+  btn.title = isFavorite(currentUrl) ? 'Remove from favorites' : 'Save to favorites';
+}
+
+function removeFavorite(url, e) {
+  e.stopPropagation();
+  let favs = getFavorites();
+  saveFavorites(favs.filter(f => f.url !== url));
+  showHomeScreen();
+}
+
+function loadFavorite(url) {
+  document.getElementById('urlInput').value = url;
+  fetchRecipe();
+}
+
+function showHomeScreen() {
+  const content = document.getElementById('content');
+  const favs = getFavorites();
+  let html = '';
+  if (favs.length) {
+    html += '<div style="margin-top:16px"><div class="section-title">Saved Recipes</div>';
+    html += '<ul class="favorites-list">';
+    favs.forEach(f => {
+      const domain = f.url.replace(/https?:\/\//, '').replace(/\/.*/, '');
+      html += `<li onclick="loadFavorite('${f.url.replace(/'/g, "\\'")}')">`;
+      if (f.image) html += `<img class="fav-thumb" src="${escHtml(f.image)}" alt="" onerror="this.style.display='none'">`;
+      html += `<div class="fav-info"><div class="fav-title">${escHtml(f.title)}</div><div class="fav-source">${escHtml(domain)}</div></div>`;
+      html += `<button class="fav-remove" onclick="removeFavorite('${f.url.replace(/'/g, "\\'")}', event)" title="Remove">\u2715</button>`;
+      html += `</li>`;
+    });
+    html += '</ul></div>';
+  }
+  html += '<div class="empty-state"><p>Paste a recipe link to get started</p><small>Works with most recipe sites</small></div>';
+  content.innerHTML = html;
+}
 
 // ---------------------------------------------------------------------------
 // localStorage cache
@@ -400,6 +542,7 @@ function getApiBase() {
 async function fetchRecipe(forceRefresh) {
   const url = document.getElementById('urlInput').value.trim();
   if (!url) return;
+  currentUrl = url;
 
   const btn = document.getElementById('fetchBtn');
   const content = document.getElementById('content');
@@ -471,8 +614,9 @@ function renderRecipe(data) {
     html += `<img class="hero-img" src="${escHtml(data.image)}" alt="" onerror="this.style.display='none'">`;
   }
 
-  // Title
-  html += `<h1 class="recipe-title">${escHtml(data.title || 'Untitled Recipe')}</h1>`;
+  // Title + favorite button
+  const favIcon = isFavorite(currentUrl) ? '\u2764\uFE0F' : '\uD83E\uDD0D';
+  html += `<div class="fav-header"><h1 class="recipe-title">${escHtml(data.title || 'Untitled Recipe')}</h1><button class="fav-btn" id="favBtn" onclick="toggleFavorite()">${favIcon}</button></div>`;
 
   // Meta row
   const metaParts = [];
@@ -792,6 +936,9 @@ urlInput.addEventListener('paste', (e) => {
 urlInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') fetchRecipe();
 });
+
+// Show home screen with favorites on load
+showHomeScreen();
 </script>
 </body>
 </html>
