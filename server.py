@@ -87,6 +87,14 @@ def _normalize_steps(raw_steps) -> list[dict]:
         if isinstance(item, str):
             steps.append({"text": item, "image": None})
         elif isinstance(item, dict):
+            # HowToSection with itemListElement (e.g. recipe sections)
+            if item.get("@type") == "HowToSection" or "itemListElement" in item:
+                for sub in item.get("itemListElement", []):
+                    if isinstance(sub, dict):
+                        steps.append({"text": sub.get("text", ""), "image": sub.get("image")})
+                    elif isinstance(sub, str):
+                        steps.append({"text": sub, "image": None})
+                continue
             text = item.get("text", "")
             image = item.get("image", None)
             if isinstance(image, dict):
