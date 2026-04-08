@@ -413,6 +413,7 @@
 </div>
 
 <div class="search-bar">
+  <button id="homeBtn" onclick="goHome()" style="background:none;border:none;font-size:1.4rem;min-height:48px;min-width:48px;cursor:pointer;display:none" title="Saved Recipes">&#9776;</button>
   <input type="url" id="urlInput" placeholder="Paste a recipe URL..." autocapitalize="off" autocorrect="off" spellcheck="false">
   <button id="fetchBtn" onclick="fetchRecipe()">Get Recipe</button>
 </div>
@@ -484,6 +485,15 @@ function removeFavorite(url, e) {
 function loadFavorite(url) {
   document.getElementById('urlInput').value = url;
   fetchRecipe();
+}
+
+function goHome() {
+  document.getElementById('urlInput').value = '';
+  document.getElementById('cacheBanner').style.display = 'none';
+  document.getElementById('homeBtn').style.display = 'none';
+  currentRecipe = null;
+  currentUrl = '';
+  showHomeScreen();
 }
 
 function showHomeScreen() {
@@ -606,6 +616,7 @@ function escHtml(s) {
 }
 
 function renderRecipe(data) {
+  document.getElementById('homeBtn').style.display = 'flex';
   const content = document.getElementById('content');
   let html = '';
 
