@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Recipes">
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%232d6a4f' width='100' height='100' rx='20'/><text y='72' x='50' text-anchor='middle' font-size='60'>🍳</text></svg>">
+<title>Recipe Fetcher</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #fafaf8;
+    --card: #ffffff;
+    --text: #1a1a1a;
+    --muted: #6b6b6b;
+    --accent: #2d6a4f;
+    --accent-light: #d8f3dc;
+    --border: #e0e0e0;
+    --radius: 12px;
+    --done: #b0b0b0;
+  }
+
+  html { font-size: 18px; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    -webkit-text-size-adjust: 100%;
+    padding: 0 0 4rem;
+  }
+
+  /* --- Search bar --- */
+  .search-bar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 16px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .search-bar input {
+    flex: 1;
+    font-size: 1rem;
+    padding: 12px 16px;
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    outline: none;
+    min-height: 48px;
+    transition: border-color 0.2s;
+  }
+  .search-bar input:focus { border-color: var(--accent); }
+  .search-bar button {
+    font-size: 1rem;
+    font-weight: 600;
+    padding: 12px 24px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    cursor: pointer;
+    min-height: 48px;
+    min-width: 48px;
+    white-space: nowrap;
+    transition: opacity 0.2s;
+  }
+  .search-bar button:active { opacity: 0.8; }
+  .search-bar button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* --- Container --- */
+  .container { max-width: 960px; margin: 0 auto; padding: 0 16px; }
+
+  /* --- Loading --- */
+  .loading {
+    text-align: center;
+    padding: 4rem 1rem;
+    color: var(--muted);
+    font-size: 1.1rem;
+  }
+  .spinner {
+    display: inline-block;
+    width: 32px; height: 32px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-bottom: 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* --- Error --- */
+  .error {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: #c0392b;
+    font-size: 1.1rem;
+  }
+
+  /* --- Hero --- */
+  .hero-img {
+    width: 100%;
+    max-height: 400px;
+    object-fit: cover;
+    border-radius: var(--radius);
+    margin: 16px 0;
+    display: block;
+  }
+
+  .recipe-title {
+    font-size: 1.8rem;
+    font-weight: 700;
+    line-height: 1.2;
+    margin: 8px 0 12px;
+  }
+
+  /* --- Meta row --- */
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .meta-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.95rem;
+    color: var(--muted);
+  }
+  .meta-item strong { color: var(--text); }
+
+  /* --- Timer --- */
+  .timer-section {
+    background: var(--card);
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 20px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+  }
+  .timer-section label { font-weight: 600; }
+  .timer-input {
+    width: 80px;
+    font-size: 1.1rem;
+    padding: 8px 10px;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    text-align: center;
+    min-height: 48px;
+  }
+  .timer-input:focus { border-color: var(--accent); outline: none; }
+  .timer-btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 24px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+    min-height: 48px;
+    min-width: 80px;
+    transition: opacity 0.2s;
+  }
+  .timer-btn:active { opacity: 0.8; }
+  .timer-btn.running { background: #c0392b; }
+  .timer-display {
+    font-size: 1.8rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    min-width: 80px;
+    display: none;
+  }
+  .timer-display.active { display: block; }
+  .timer-display.done { color: #27ae60; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+  .timer-presets { display: flex; gap: 8px; flex-wrap: wrap; }
+  .timer-preset {
+    background: var(--accent-light);
+    color: var(--accent);
+    border: none;
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+  .timer-preset:active { opacity: 0.7; }
+
+  /* --- Scaler --- */
+  .scaler {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+    font-size: 1rem;
+  }
+  .scaler input[type="number"] {
+    width: 70px;
+    font-size: 1.1rem;
+    padding: 8px 10px;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    text-align: center;
+    min-height: 48px;
+  }
+  .scaler-reset {
+    font-size: 0.85rem;
+    color: var(--accent);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 8px;
+    min-height: 44px;
+    min-width: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* --- Two-column layout --- */
+  .columns {
+    display: grid;
+    grid-template-columns: 1fr 1.5fr;
+    gap: 24px;
+    align-items: start;
+  }
+  @media (max-width: 700px) {
+    .columns { grid-template-columns: 1fr; }
+  }
+
+  .section-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+  }
+
+  /* --- Ingredients --- */
+  .ingredients-list { list-style: none; }
+  .ingredients-list li {
+    padding: 12px 8px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    transition: opacity 0.2s, color 0.2s;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+  .ingredients-list li.crossed {
+    text-decoration: line-through;
+    color: var(--done);
+  }
+
+  /* --- Steps --- */
+  .steps-list { list-style: none; counter-reset: step; }
+  .steps-list li {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    min-height: 48px;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+  .step-circle {
+    flex-shrink: 0;
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin-top: 2px;
+    transition: background 0.2s, border-color 0.2s, color 0.2s;
+  }
+  .steps-list li.done .step-circle {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .steps-list li.done .step-text {
+    color: var(--done);
+  }
+  .step-body { flex: 1; }
+  .step-text { font-size: 1rem; line-height: 1.5; }
+  .step-img {
+    width: 100%;
+    border-radius: 8px;
+    margin-top: 10px;
+  }
+
+  /* --- Cache banner --- */
+  .cache-banner {
+    background: #fff3cd;
+    color: #856404;
+    text-align: center;
+    padding: 8px 16px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    display: none;
+  }
+  .cache-banner:hover { background: #ffeeba; }
+
+  /* --- Empty state --- */
+  .empty-state {
+    text-align: center;
+    padding: 6rem 2rem;
+    color: var(--muted);
+  }
+  .empty-state p { font-size: 1.2rem; margin-bottom: 8px; }
+  .empty-state small { font-size: 0.9rem; }
+</style>
+</head>
+<body>
+
+<div class="cache-banner" id="cacheBanner" onclick="loadFresh()">
+  Showing cached recipe. Tap here to re-fetch from source.
+</div>
+
+<div class="search-bar">
+  <input type="url" id="urlInput" placeholder="Paste a recipe URL..." autocapitalize="off" autocorrect="off" spellcheck="false">
+  <button id="fetchBtn" onclick="fetchRecipe()">Get Recipe</button>
+</div>
+
+<div class="container" id="content">
+  <div class="empty-state">
+    <p>Paste a recipe link to get started</p>
+    <small>Works with most recipe sites</small>
+  </div>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+let currentRecipe = null;
+let originalServings = null;
+let currentServings = null;
+let fromCache = false;
+
+const CACHE_KEY = 'recipe_cache';
+
+// ---------------------------------------------------------------------------
+// localStorage cache
+// ---------------------------------------------------------------------------
+function getCached(url) {
+  try {
+    const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
+    return cache[url] || null;
+  } catch { return null; }
+}
+
+function setCache(url, data) {
+  try {
+    const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
+    // Keep max 20 entries
+    const keys = Object.keys(cache);
+    if (keys.length >= 20) delete cache[keys[0]];
+    cache[url] = { data, ts: Date.now() };
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+  } catch {}
+}
+
+// ---------------------------------------------------------------------------
+// API base — works whether opened locally or served by FastAPI
+// ---------------------------------------------------------------------------
+function getApiBase() {
+  if (location.protocol === 'file:') return 'http://localhost:8080';
+  return location.origin;
+}
+
+// ---------------------------------------------------------------------------
+// Fetch recipe
+// ---------------------------------------------------------------------------
+async function fetchRecipe(forceRefresh) {
+  const url = document.getElementById('urlInput').value.trim();
+  if (!url) return;
+
+  const btn = document.getElementById('fetchBtn');
+  const content = document.getElementById('content');
+  const banner = document.getElementById('cacheBanner');
+  banner.style.display = 'none';
+  fromCache = false;
+
+  // Check cache first (unless forcing refresh)
+  if (!forceRefresh) {
+    const cached = getCached(url);
+    if (cached) {
+      currentRecipe = cached.data;
+      originalServings = cached.data.servings || null;
+      currentServings = originalServings;
+      fromCache = true;
+      banner.style.display = 'block';
+      renderRecipe(cached.data);
+      return;
+    }
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Fetching...';
+  content.innerHTML = '<div class="loading"><div class="spinner"></div><br>Fetching recipe...</div>';
+
+  try {
+    const resp = await fetch(`${getApiBase()}/recipe?url=${encodeURIComponent(url)}`);
+    const data = await resp.json();
+
+    if (data.error) {
+      content.innerHTML = `<div class="error">${escHtml(data.error)}</div>`;
+      return;
+    }
+
+    currentRecipe = data;
+    originalServings = data.servings || null;
+    currentServings = originalServings;
+    setCache(url, data);
+    renderRecipe(data);
+  } catch (e) {
+    content.innerHTML = `<div class="error">Could not connect to the server.<br>Make sure start.sh is running.</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Get Recipe';
+  }
+}
+
+function loadFresh() {
+  fromCache = false;
+  document.getElementById('cacheBanner').style.display = 'none';
+  fetchRecipe(true);
+}
+
+// ---------------------------------------------------------------------------
+// Render
+// ---------------------------------------------------------------------------
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function renderRecipe(data) {
+  const content = document.getElementById('content');
+  let html = '';
+
+  // Hero image
+  if (data.image) {
+    html += `<img class="hero-img" src="${escHtml(data.image)}" alt="" onerror="this.style.display='none'">`;
+  }
+
+  // Title
+  html += `<h1 class="recipe-title">${escHtml(data.title || 'Untitled Recipe')}</h1>`;
+
+  // Meta row
+  const metaParts = [];
+  if (data.prepTime) metaParts.push(`<div class="meta-item"><strong>Prep:</strong> ${escHtml(data.prepTime)}</div>`);
+  if (data.cookTime) metaParts.push(`<div class="meta-item"><strong>Cook:</strong> ${escHtml(data.cookTime)}</div>`);
+  if (data.totalTime) metaParts.push(`<div class="meta-item"><strong>Total:</strong> ${escHtml(data.totalTime)}</div>`);
+  if (data.servings) metaParts.push(`<div class="meta-item"><strong>Serves:</strong> ${data.servings}</div>`);
+  if (metaParts.length) {
+    html += `<div class="meta-row">${metaParts.join('')}</div>`;
+  }
+
+  // Timer section — always shown, with presets from recipe times
+  const presets = [];
+  if (data.prepTime) { const m = parseMinutes(data.prepTime); if (m) presets.push({ label: `Prep (${m} min)`, mins: m }); }
+  if (data.cookTime) { const m = parseMinutes(data.cookTime); if (m) presets.push({ label: `Cook (${m} min)`, mins: m }); }
+  if (data.totalTime) { const m = parseMinutes(data.totalTime); if (m) presets.push({ label: `Total (${m} min)`, mins: m }); }
+
+  const defaultMins = presets.length ? presets[0].mins : 10;
+  html += `<div class="timer-section">
+    <label>Timer:</label>
+    <input type="number" class="timer-input" id="timerMinutes" value="${defaultMins}" min="1" max="999"> <span>min</span>
+    <button class="timer-btn" id="timerBtn" onclick="toggleTimer()">Start</button>
+    <div class="timer-display" id="timerDisplay"></div>`;
+  if (presets.length) {
+    html += `<div class="timer-presets">`;
+    presets.forEach(p => {
+      html += `<button class="timer-preset" onclick="document.getElementById('timerMinutes').value=${p.mins}">${escHtml(p.label)}</button>`;
+    });
+    html += `</div>`;
+  }
+  html += `</div>`;
+
+  // Scaler
+  if (data.servings && data.ingredients && data.ingredients.length) {
+    html += `
+      <div class="scaler">
+        <label for="servingsInput"><strong>Servings:</strong></label>
+        <input type="number" id="servingsInput" value="${data.servings}" min="1" max="100" onchange="scaleIngredients(this.value)">
+        <button class="scaler-reset" onclick="resetScale()">Reset</button>
+      </div>`;
+  }
+
+  // Columns
+  html += '<div class="columns">';
+
+  // Ingredients
+  if (data.ingredients && data.ingredients.length) {
+    html += '<div><div class="section-title">Ingredients</div><ul class="ingredients-list" id="ingredientsList">';
+    data.ingredients.forEach((ing, i) => {
+      const display = currentServings && originalServings && currentServings !== originalServings
+        ? scaleText(ing, currentServings / originalServings)
+        : ing;
+      html += `<li onclick="this.classList.toggle('crossed')" data-idx="${i}">${escHtml(display)}</li>`;
+    });
+    html += '</ul></div>';
+  }
+
+  // Steps
+  if (data.steps && data.steps.length) {
+    html += '<div><div class="section-title">Instructions</div><ol class="steps-list">';
+    data.steps.forEach((step, i) => {
+      html += `
+        <li onclick="this.classList.toggle('done')">
+          <div class="step-circle">${i + 1}</div>
+          <div class="step-body">
+            <div class="step-text">${escHtml(step.text)}</div>
+            ${step.image ? `<img class="step-img" src="${escHtml(step.image)}" alt="" onerror="this.style.display='none'">` : ''}
+          </div>
+        </li>`;
+    });
+    html += '</ol></div>';
+  }
+
+  html += '</div>'; // columns
+  content.innerHTML = html;
+}
+
+// ---------------------------------------------------------------------------
+// Serving scaler
+// ---------------------------------------------------------------------------
+
+// Fraction maps
+const FRAC_TO_NUM = {
+  '\u00BC': 0.25, '\u00BD': 0.5, '\u00BE': 0.75,
+  '\u2153': 0.333, '\u2154': 0.667,
+  '\u2155': 0.2, '\u2156': 0.4, '\u2157': 0.6, '\u2158': 0.8,
+  '\u2159': 0.167, '\u215A': 0.833,
+  '\u215B': 0.125, '\u215C': 0.375, '\u215D': 0.625, '\u215E': 0.875,
+};
+
+const NUM_TO_FRAC = [
+  [0.125, '\u215B'], [0.167, '\u2159'], [0.2, '\u2155'],
+  [0.25, '\u00BC'], [0.333, '\u2153'], [0.375, '\u215C'],
+  [0.4, '\u2156'], [0.5, '\u00BD'], [0.6, '\u2157'],
+  [0.625, '\u215D'], [0.667, '\u2154'], [0.75, '\u00BE'],
+  [0.8, '\u2158'], [0.833, '\u215A'], [0.875, '\u215E'],
+];
+
+function fracToNum(s) {
+  return FRAC_TO_NUM[s] ?? null;
+}
+
+function numToDisplay(n) {
+  if (n === 0) return '0';
+  const whole = Math.floor(n);
+  const frac = n - whole;
+
+  if (frac < 0.06) return whole.toString();
+
+  // Find closest fraction
+  let bestFrac = '';
+  let bestDist = Infinity;
+  for (const [val, sym] of NUM_TO_FRAC) {
+    const d = Math.abs(frac - val);
+    if (d < bestDist) { bestDist = d; bestFrac = sym; }
+  }
+
+  if (bestDist < 0.05) {
+    return whole > 0 ? `${whole} ${bestFrac}` : bestFrac;
+  }
+  // Fall back to decimal rounded to 1 place
+  return parseFloat(n.toFixed(1)).toString();
+}
+
+// Parse a quantity from the start of an ingredient string.
+// Returns { value: number, length: number } or null.
+function parseQty(text) {
+  let m;
+
+  // "1 1/2" or "2 3/4" — whole + space + ASCII fraction
+  m = text.match(/^(\d+)\s+(\d+)\/(\d+)/);
+  if (m && parseInt(m[3]) !== 0) {
+    return { value: parseInt(m[1]) + parseInt(m[2]) / parseInt(m[3]), length: m[0].length };
+  }
+
+  // "1 ½" — whole + space + unicode fraction
+  m = text.match(/^(\d+)\s*([\u00BC\u00BD\u00BE\u2153-\u215E])/);
+  if (m) {
+    return { value: parseInt(m[1]) + fracToNum(m[2]), length: m[0].length };
+  }
+
+  // "1/4" or "2/3" — ASCII fraction alone
+  m = text.match(/^(\d+)\/(\d+)/);
+  if (m && parseInt(m[2]) !== 0) {
+    return { value: parseInt(m[1]) / parseInt(m[2]), length: m[0].length };
+  }
+
+  // "½" — unicode fraction alone
+  m = text.match(/^([\u00BC\u00BD\u00BE\u2153-\u215E])/);
+  if (m) {
+    return { value: fracToNum(m[1]), length: m[0].length };
+  }
+
+  // "2" or "12" — whole number alone
+  m = text.match(/^(\d+)/);
+  if (m) {
+    return { value: parseInt(m[1]), length: m[0].length };
+  }
+
+  return null;
+}
+
+function scaleText(text, ratio) {
+  const parsed = parseQty(text);
+  if (!parsed) return text;
+  const scaled = parsed.value * ratio;
+  return numToDisplay(scaled) + text.slice(parsed.length);
+}
+
+function scaleIngredients(newVal) {
+  newVal = parseInt(newVal, 10);
+  if (!newVal || newVal < 1 || !originalServings) return;
+  currentServings = newVal;
+  const ratio = currentServings / originalServings;
+  const list = document.getElementById('ingredientsList');
+  if (!list) return;
+  const items = list.querySelectorAll('li');
+  items.forEach((li, i) => {
+    const orig = currentRecipe.ingredients[i];
+    const wasCrossed = li.classList.contains('crossed');
+    li.textContent = scaleText(orig, ratio);
+    if (wasCrossed) li.classList.add('crossed');
+  });
+}
+
+function resetScale() {
+  const input = document.getElementById('servingsInput');
+  if (input) input.value = originalServings;
+  currentServings = originalServings;
+  scaleIngredients(originalServings);
+}
+
+// ---------------------------------------------------------------------------
+// Timers
+// ---------------------------------------------------------------------------
+function parseMinutes(timeStr) {
+  let total = 0;
+  const hr = timeStr.match(/(\d+)\s*hr/i);
+  const mn = timeStr.match(/(\d+)\s*min/i);
+  if (hr) total += parseInt(hr[1]) * 60;
+  if (mn) total += parseInt(mn[1]);
+  if (!hr && !mn) {
+    const num = timeStr.match(/(\d+)/);
+    if (num) total = parseInt(num[1]);
+  }
+  return total > 0 ? total : 0;
+}
+
+// Web Audio alarm — works on iPad Safari (no file needed)
+function playAlarm() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const freqs = [880, 0, 880, 0, 880, 0, 1100, 0, 1100];
+    const noteLen = 0.15;
+    let t = ctx.currentTime;
+    freqs.forEach(freq => {
+      if (freq > 0) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = freq;
+        osc.type = 'square';
+        gain.gain.setValueAtTime(0.3, t);
+        gain.gain.exponentialRampToValueAtTime(0.01, t + noteLen - 0.02);
+        osc.start(t);
+        osc.stop(t + noteLen);
+      }
+      t += noteLen;
+    });
+    // Repeat the whole pattern 3 times
+    for (let rep = 1; rep <= 2; rep++) {
+      const offset = rep * freqs.length * noteLen + rep * 0.3;
+      let t2 = ctx.currentTime + offset;
+      freqs.forEach(freq => {
+        if (freq > 0) {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.frequency.value = freq;
+          osc.type = 'square';
+          gain.gain.setValueAtTime(0.3, t2);
+          gain.gain.exponentialRampToValueAtTime(0.01, t2 + noteLen - 0.02);
+          osc.start(t2);
+          osc.stop(t2 + noteLen);
+        }
+        t2 += noteLen;
+      });
+    }
+  } catch {}
+}
+
+let _timerInterval = null;
+let _timerRemaining = 0;
+
+function toggleTimer() {
+  const btn = document.getElementById('timerBtn');
+  const display = document.getElementById('timerDisplay');
+  const input = document.getElementById('timerMinutes');
+
+  // If running, stop it
+  if (_timerInterval) {
+    clearInterval(_timerInterval);
+    _timerInterval = null;
+    btn.className = 'timer-btn';
+    btn.textContent = 'Start';
+    display.className = 'timer-display';
+    display.textContent = '';
+    return;
+  }
+
+  // "Unlock" audio context on iPad by creating it on user tap
+  try { new (window.AudioContext || window.webkitAudioContext)(); } catch {}
+
+  const mins = parseInt(input.value) || 10;
+  _timerRemaining = mins * 60;
+  btn.className = 'timer-btn running';
+  btn.textContent = 'Stop';
+  display.className = 'timer-display active';
+
+  function tick() {
+    if (_timerRemaining <= 0) {
+      clearInterval(_timerInterval);
+      _timerInterval = null;
+      btn.className = 'timer-btn';
+      btn.textContent = 'Start';
+      display.className = 'timer-display active done';
+      display.textContent = 'Done!';
+      playAlarm();
+      if ('vibrate' in navigator) navigator.vibrate([200, 100, 200, 100, 200]);
+      return;
+    }
+    const m = Math.floor(_timerRemaining / 60);
+    const s = _timerRemaining % 60;
+    display.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+    _timerRemaining--;
+  }
+
+  tick();
+  _timerInterval = setInterval(tick, 1000);
+}
+
+// ---------------------------------------------------------------------------
+// Paste detection — auto-fetch on paste if it looks like a URL
+// ---------------------------------------------------------------------------
+const urlInput = document.getElementById('urlInput');
+urlInput.addEventListener('paste', (e) => {
+  setTimeout(() => {
+    const val = urlInput.value.trim();
+    if (/^https?:\/\/.+\..+/.test(val)) {
+      fetchRecipe();
+    }
+  }, 50);
+});
+
+urlInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') fetchRecipe();
+});
+</script>
+</body>
+</html>
