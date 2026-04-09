@@ -836,46 +836,33 @@ function parseMinutes(timeStr) {
   return total > 0 ? total : 0;
 }
 
-// Web Audio alarm — works on iPad Safari (no file needed)
+// Web Audio alarm — reuse context created on user tap
+let _alarmCtx = null;
+
 function playAlarm() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (!_alarmCtx) _alarmCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_alarmCtx.state === 'suspended') _alarmCtx.resume();
     const freqs = [880, 0, 880, 0, 880, 0, 1100, 0, 1100];
     const noteLen = 0.15;
-    let t = ctx.currentTime;
-    freqs.forEach(freq => {
-      if (freq > 0) {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.frequency.value = freq;
-        osc.type = 'square';
-        gain.gain.setValueAtTime(0.3, t);
-        gain.gain.exponentialRampToValueAtTime(0.01, t + noteLen - 0.02);
-        osc.start(t);
-        osc.stop(t + noteLen);
-      }
-      t += noteLen;
-    });
-    // Repeat the whole pattern 3 times
-    for (let rep = 1; rep <= 2; rep++) {
+
+    for (let rep = 0; rep < 3; rep++) {
       const offset = rep * freqs.length * noteLen + rep * 0.3;
-      let t2 = ctx.currentTime + offset;
+      let t = _alarmCtx.currentTime + offset;
       freqs.forEach(freq => {
         if (freq > 0) {
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
+          const osc = _alarmCtx.createOscillator();
+          const gain = _alarmCtx.createGain();
           osc.connect(gain);
-          gain.connect(ctx.destination);
+          gain.connect(_alarmCtx.destination);
           osc.frequency.value = freq;
           osc.type = 'square';
-          gain.gain.setValueAtTime(0.3, t2);
-          gain.gain.exponentialRampToValueAtTime(0.01, t2 + noteLen - 0.02);
-          osc.start(t2);
-          osc.stop(t2 + noteLen);
+          gain.gain.setValueAtTime(0.3, t);
+          gain.gain.exponentialRampToValueAtTime(0.01, t + noteLen - 0.02);
+          osc.start(t);
+          osc.stop(t + noteLen);
         }
-        t2 += noteLen;
+        t += noteLen;
       });
     }
   } catch {}
@@ -900,8 +887,19 @@ function toggleTimer() {
     return;
   }
 
-  // "Unlock" audio context on iPad by creating it on user tap
-  try { new (window.AudioContext || window.webkitAudioContext)(); } catch {}
+  // Create and unlock audio context on this user tap — keeps it alive for alarm
+  try {
+    if (!_alarmCtx) _alarmCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_alarmCtx.state === 'suspended') _alarmCtx.resume();
+    // Play a silent tone to fully unlock on iOS
+    const osc = _alarmCtx.createOscillator();
+    const gain = _alarmCtx.createGain();
+    osc.connect(gain);
+    gain.connect(_alarmCtx.destination);
+    gain.gain.value = 0.001;
+    osc.start();
+    osc.stop(_alarmCtx.currentTime + 0.01);
+  } catch {}
 
   const mins = parseInt(input.value) || 10;
   _timerRemaining = mins * 60;
